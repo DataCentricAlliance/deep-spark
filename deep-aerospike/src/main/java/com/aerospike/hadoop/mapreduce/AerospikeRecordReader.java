@@ -101,15 +101,17 @@ public class AerospikeRecordReader
         String namespace;
         String setName;
         String[] binNames;
+        ScanPolicy scanPolicy;
 
         ASSCanReader(String node, String host, int port,
-                     String ns, String setName, String[] binNames) {
+                     String ns, String setName, String[] binNames, ScanPolicy scanPolicy) {
             this.node = node;
             this.host = host;
             this.port = port;
             this.namespace = ns;
             this.setName = setName;
             this.binNames = binNames;
+            this.scanPolicy = scanPolicy;
         }
 
         public void run() {
@@ -120,7 +122,6 @@ public class AerospikeRecordReader
 
                 log.info(String.format("scanNode %s:%d:%s:%s",
                                        host, port, namespace, setName));
-                ScanPolicy scanPolicy = new ScanPolicy();
                 CallBack cb = new CallBack();
                 log.info("scan starting");
                 isRunning = true;
@@ -152,10 +153,11 @@ public class AerospikeRecordReader
         String numrangeBin;
         long numrangeBegin;
         long numrangeEnd;
+        QueryPolicy queryPolicy;
 
         ASQueryReader(String node, String host, int port,
                       String ns, String setName, String[] binNames,
-                      String numrangeBin, long numrangeBegin, long numrangeEnd) {
+                      String numrangeBin, long numrangeBegin, long numrangeEnd, QueryPolicy queryPolicy) {
             this.node = node;
             this.host = host;
             this.port = port;
@@ -165,6 +167,7 @@ public class AerospikeRecordReader
             this.numrangeBin = numrangeBin;
             this.numrangeBegin = numrangeBegin;
             this.numrangeEnd = numrangeEnd;
+            this.queryPolicy = queryPolicy;
         }
 
         public void run() {
@@ -184,7 +187,6 @@ public class AerospikeRecordReader
                                              numrangeEnd));
                 if (binNames != null)
                     stmt.setBinNames(binNames);
-                QueryPolicy queryPolicy = new QueryPolicy();
                 RecordSet rs = client.queryNode(queryPolicy,
                                                 stmt,
                                                 client.getNode(node));
@@ -216,13 +218,13 @@ public class AerospikeRecordReader
         log.info("NEW CTOR");
     }
 
-    public AerospikeRecordReader(AerospikeSplit split)
+    public AerospikeRecordReader(AerospikeSplit split, Configuration conf)
         throws IOException {
         log.info("OLD CTOR");
-        init(split);
+        init(split, conf);
     }
 
-    public void init(AerospikeSplit split)
+    public void init(AerospikeSplit split, Configuration conf)
         throws IOException {
         final String type = split.getType();
         final String node = split.getNode();
@@ -236,13 +238,15 @@ public class AerospikeRecordReader
         this.numrangeEnd = split.getNumRangeEnd();
 
         if (type.equals("scan")) {
+            ScanPolicy scanPolicy = getScanPolicy(conf);
             scanReader = new ASSCanReader(node, host, port, namespace,
-                                          setName, binNames);
+                                          setName, binNames, scanPolicy);
             scanReader.start();
         } else if (type.equals("numrange")) {
+            QueryPolicy queryPolicy = getQueryPolicy(conf);
             queryReader = new ASQueryReader(node, host, port, namespace,
                                             setName, binNames, numrangeBin,
-                                            numrangeBegin, numrangeEnd);
+                                            numrangeBegin, numrangeEnd, queryPolicy);
             queryReader.start();
         }
 
@@ -369,7 +373,7 @@ public class AerospikeRecordReader
     public void initialize(InputSplit split, TaskAttemptContext context)
         throws IOException {
         log.info("INITIALIZE");
-        init((AerospikeSplit) split);
+        init((AerospikeSplit) split, context.getConfiguration());
     }
 
     @Override
@@ -394,6 +398,18 @@ public class AerospikeRecordReader
     @Override
     public AerospikeRecord getCurrentValue() {
         return currentValue;
+    }
+
+    private ScanPolicy getScanPolicy(Configuration conf) {
+        ScanPolicy scanPolicy = new ScanPolicy();
+        scanPolicy.sendKey = AerospikeConfigUtil.getInputUserKeyEnable(conf);
+        return scanPolicy;
+    }
+
+    private QueryPolicy getQueryPolicy(Configuration conf) {
+        QueryPolicy queryPolicy = new QueryPolicy();
+        queryPolicy.sendKey = AerospikeConfigUtil.getInputUserKeyEnable(conf);
+        return queryPolicy;
     }
 }
 
