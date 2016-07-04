@@ -28,6 +28,7 @@ import com.aerospike.client.query.RecordSet;
 import com.aerospike.client.query.Statement;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.RecordReader;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
@@ -44,6 +45,7 @@ public class AerospikeRecordReader
     private class KeyRecPair {
         public AerospikeKey key;
         public AerospikeRecord rec;
+
         public KeyRecPair(AerospikeKey key, AerospikeRecord rec) {
             this.key = key;
             this.rec = rec;
@@ -51,7 +53,7 @@ public class AerospikeRecordReader
     }
 
     private static final Log log =
-        LogFactory.getLog(AerospikeRecordReader.class);
+            LogFactory.getLog(AerospikeRecordReader.class);
 
     private ASSCanReader scanReader = null;
     private ASQueryReader queryReader = null;
@@ -65,7 +67,7 @@ public class AerospikeRecordReader
     private String numrangeBin;
     private long numrangeBegin;
     private long numrangeEnd;
-    
+
     private AerospikeKey currentKey;
     private AerospikeRecord currentValue;
 
@@ -106,7 +108,7 @@ public class AerospikeRecordReader
                 AerospikeClient client = AerospikeClientSingleton.getInstance(new ClientPolicy(), host, port);
 
                 log.info(String.format("scanNode %s:%d:%s:%s",
-                                       host, port, namespace, setName));
+                        host, port, namespace, setName));
                 CallBack cb = new CallBack();
                 log.info("scan starting");
                 isRunning = true;
@@ -156,26 +158,27 @@ public class AerospikeRecordReader
             try {
                 AerospikeClient client = AerospikeClientSingleton.getInstance(new ClientPolicy(), host, port);
                 log.info(String.format("queryNode %s:%d %s:%s:%s[%d:%d]", host, port, namespace, setName,
-                                       numrangeBin, numrangeBegin, numrangeEnd));
+                        numrangeBin, numrangeBegin, numrangeEnd));
                 Statement stmt = new Statement();
                 stmt.setNamespace(namespace);
                 stmt.setSetName(setName);
                 stmt.setFilters(Filter.range(numrangeBin, numrangeBegin, numrangeEnd));
                 if (binNames != null) {
                     stmt.setBinNames(binNames);
-                RecordSet rs = client.queryNode(queryPolicy, stmt, client.getNode(node));
-                isRunning = true;
-                try {
-                    log.info("query starting");
-                    while (rs.next()) {
-                        Key key = rs.getKey();
-                        Record record = rs.getRecord();
-                        queue.put(new KeyRecPair(new AerospikeKey(key), new AerospikeRecord(record)));
+                    RecordSet rs = client.queryNode(queryPolicy, stmt, client.getNode(node));
+                    isRunning = true;
+                    try {
+                        log.info("query starting");
+                        while (rs.next()) {
+                            Key key = rs.getKey();
+                            Record record = rs.getRecord();
+                            queue.put(new KeyRecPair(new AerospikeKey(key), new AerospikeRecord(record)));
+                        }
+                    } finally {
+                        rs.close();
+                        isFinished = true;
+                        log.info("query finished");
                     }
-                } finally {
-                    rs.close();
-                    isFinished = true;
-                    log.info("query finished");
                 }
             } catch (Exception ex) {
                 isError = true;
@@ -183,152 +186,157 @@ public class AerospikeRecordReader
         }
     }
 
-    public AerospikeRecordReader() throws IOException {
-        log.info("NEW CTOR");
-    }
-
-    public AerospikeRecordReader(AerospikeSplit split, Configuration conf) throws IOException {
-        log.info("OLD CTOR");
-        init(split, conf);
-    }
-
-    public void init(AerospikeSplit split, Configuration conf) throws IOException {
-        final String type = split.getType();
-        final String node = split.getNode();
-        final String host = split.getHost();
-        final int port = split.getPort();
-        final String namespace = split.getNameSpace();
-        final String setName = split.getSetName();
-        final String[] binNames = split.getBinNames();
-        this.numrangeBin = split.getNumRangeBin();
-        this.numrangeBegin = split.getNumRangeBegin();
-        this.numrangeEnd = split.getNumRangeEnd();
-
-        if (type.equals("scan")) {
-            ScanPolicy scanPolicy = getScanPolicy(conf);
-            scanReader = new ASSCanReader(node, host, port, namespace, setName, binNames, scanPolicy);
-            scanReader.start();
-        } else if (type.equals("numrange")) {
-            QueryPolicy queryPolicy = getQueryPolicy(conf);
-            queryReader = new ASQueryReader(node, host, port, namespace, setName, binNames, numrangeBin,
-                                            numrangeBegin, numrangeEnd, queryPolicy);
-            queryReader.start();
+        public AerospikeRecordReader() throws IOException {
+            log.info("NEW CTOR");
         }
 
-        log.info("node: " + node);
-    }
+        public AerospikeRecordReader(AerospikeSplit split, Configuration conf) throws IOException {
+            log.info("OLD CTOR");
+            init(split, conf);
+        }
 
-    public AerospikeKey createKey() { return new AerospikeKey(); }
+        public void init(AerospikeSplit split, Configuration conf) throws IOException {
+            final String type = split.getType();
+            final String node = split.getNode();
+            final String host = split.getHost();
+            final int port = split.getPort();
+            final String namespace = split.getNameSpace();
+            final String setName = split.getSetName();
+            final String[] binNames = split.getBinNames();
+            this.numrangeBin = split.getNumRangeBin();
+            this.numrangeBegin = split.getNumRangeBegin();
+            this.numrangeEnd = split.getNumRangeEnd();
 
-    public AerospikeRecord createValue() { return new AerospikeRecord(); }
-
-    protected void setCurrentKey(AerospikeKey container, AerospikeKey actual) {
-        currentKey = container;
-        container.set(actual);
-    }
-
-    protected void setCurrentValue(AerospikeRecord container, AerospikeRecord actual) {
-        currentValue = container;
-        container.set(actual);
-    }
-
-    public synchronized boolean next(AerospikeKey key, AerospikeRecord value) throws IOException {
-        try {
-            if (isError) {
-                return false;
+            if (type.equals("scan")) {
+                ScanPolicy scanPolicy = getScanPolicy(conf);
+                scanReader = new ASSCanReader(node, host, port, namespace, setName, binNames, scanPolicy);
+                scanReader.start();
+            } else if (type.equals("numrange")) {
+                QueryPolicy queryPolicy = getQueryPolicy(conf);
+                queryReader = new ASQueryReader(node, host, port, namespace, setName, binNames, numrangeBin,
+                        numrangeBegin, numrangeEnd, queryPolicy);
+                queryReader.start();
             }
 
-            while (!isRunning) {
-                Thread.sleep(100);
-            }
+            log.info("node: " + node);
+        }
 
-            KeyRecPair pair = queue.poll(5, TimeUnit.SECONDS);
-            if (! isFinished) {
-                if(pair == null) {
-                    log.error("SCAN TIMEOUT");
+        public AerospikeKey createKey() {
+            return new AerospikeKey();
+        }
+
+        public AerospikeRecord createValue() {
+            return new AerospikeRecord();
+        }
+
+        protected void setCurrentKey(AerospikeKey container, AerospikeKey actual) {
+            currentKey = container;
+            container.set(actual);
+        }
+
+        protected void setCurrentValue(AerospikeRecord container, AerospikeRecord actual) {
+            currentValue = container;
+            container.set(actual);
+        }
+
+        public synchronized boolean next(AerospikeKey key, AerospikeRecord value) throws IOException {
+            try {
+                if (isError) {
                     return false;
                 }
-            } else if (pair == null) {
-                return false;
-            }
 
-            // log.info("key=" + pair.key + ", val=" + pair.rec);
-            setCurrentKey(key, pair.key);
-            setCurrentValue(value, pair.rec);
-        } catch (Exception ex) {
-            log.error("exception in AerospikeRecordReader.next: " + ex);
-            throw new IOException("exception in AerospikeRecordReader.next", ex);
-        }
-        return true;
-    }
+                while (!isRunning) {
+                    Thread.sleep(100);
+                }
 
+                KeyRecPair pair = queue.poll(5, TimeUnit.SECONDS);
+                if (!isFinished) {
+                    if (pair == null) {
+                        log.error("SCAN TIMEOUT");
+                        return false;
+                    }
+                } else if (pair == null) {
+                    return false;
+                }
 
-    public float getProgress() {
-        return isFinished ? 1.0f : 0.0f;
-    }
-
-    public long getPos() throws IOException {
-        return 0;
-    }
-
-    public synchronized void close() throws IOException {
-        if (scanReader != null) {
-            try {
-                scanReader.join();
+                // log.info("key=" + pair.key + ", val=" + pair.rec);
+                setCurrentKey(key, pair.key);
+                setCurrentValue(value, pair.rec);
             } catch (Exception ex) {
-                throw new IOException("exception in AerospikeRecordReader.close", ex);
+                log.error("exception in AerospikeRecordReader.next: " + ex);
+                throw new IOException("exception in AerospikeRecordReader.next", ex);
             }
-            scanReader = null;
+            return true;
         }
-        if (queryReader != null) {
-            try {
-                queryReader.join();
-            } catch (Exception ex) {
-                throw new IOException("exception in AerospikeRecordReader.close", ex);
+
+
+        public float getProgress() {
+            return isFinished ? 1.0f : 0.0f;
+        }
+
+        public long getPos() throws IOException {
+            return 0;
+        }
+
+        public synchronized void close() throws IOException {
+            if (scanReader != null) {
+                try {
+                    scanReader.join();
+                } catch (Exception ex) {
+                    throw new IOException("exception in AerospikeRecordReader.close", ex);
+                }
+                scanReader = null;
             }
-            queryReader = null;
+            if (queryReader != null) {
+                try {
+                    queryReader.join();
+                } catch (Exception ex) {
+                    throw new IOException("exception in AerospikeRecordReader.close", ex);
+                }
+                queryReader = null;
+            }
+        }
+
+        // ---------------- NEW API ----------------
+
+        @Override
+        public void initialize(InputSplit split, TaskAttemptContext context) throws IOException {
+            log.info("INITIALIZE");
+            init((AerospikeSplit) split, context.getConfiguration());
+        }
+
+        @Override
+        public boolean nextKeyValue() throws IOException {
+            AerospikeKey key = currentKey != null ? currentKey : createKey();
+            AerospikeRecord value = currentValue != null ? currentValue : createValue();
+            // FIXME: does the new API mandate a new instance each time (?)
+            return next(key, value);
+        }
+
+        @Override
+        public AerospikeKey getCurrentKey() throws IOException {
+            return currentKey;
+        }
+
+        @Override
+        public AerospikeRecord getCurrentValue() {
+            return currentValue;
+        }
+
+        private ScanPolicy getScanPolicy(Configuration conf) {
+            ScanPolicy scanPolicy = new ScanPolicy();
+            scanPolicy.sendKey = AerospikeConfigUtil.getInputUserKeyEnable(conf);
+            return scanPolicy;
+        }
+
+        private QueryPolicy getQueryPolicy(Configuration conf) {
+            QueryPolicy queryPolicy = new QueryPolicy();
+            queryPolicy.sendKey = AerospikeConfigUtil.getInputUserKeyEnable(conf);
+            return queryPolicy;
         }
     }
 
-    // ---------------- NEW API ----------------
-
-    @Override
-    public void initialize(InputSplit split, TaskAttemptContext context) throws IOException {
-        log.info("INITIALIZE");
-        init((AerospikeSplit) split, context.getConfiguration());
-    }
-
-    @Override
-    public boolean nextKeyValue() throws IOException {
-        AerospikeKey key = currentKey != null ? currentKey : createKey();
-        AerospikeRecord value = currentValue != null ? currentValue : createValue();
-        // FIXME: does the new API mandate a new instance each time (?)
-        return next(key, value);
-    }
-
-    @Override
-    public AerospikeKey getCurrentKey() throws IOException {
-        return currentKey;
-    }
-
-    @Override
-    public AerospikeRecord getCurrentValue() {
-        return currentValue;
-    }
-
-    private ScanPolicy getScanPolicy(Configuration conf) {
-        ScanPolicy scanPolicy = new ScanPolicy();
-        scanPolicy.sendKey = AerospikeConfigUtil.getInputUserKeyEnable(conf);
-        return scanPolicy;
-    }
-
-    private QueryPolicy getQueryPolicy(Configuration conf) {
-        QueryPolicy queryPolicy = new QueryPolicy();
-        queryPolicy.sendKey = AerospikeConfigUtil.getInputUserKeyEnable(conf);
-        return queryPolicy;
-    }
 }
-
 // Local Variables:
 // mode: java
 // c-basic-offset: 4
