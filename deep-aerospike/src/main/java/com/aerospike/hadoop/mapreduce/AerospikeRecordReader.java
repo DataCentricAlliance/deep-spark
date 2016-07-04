@@ -107,10 +107,11 @@ public class AerospikeRecordReader
                 CallBack cb = new CallBack();
                 log.info("scan starting");
                 isRunning = true;
-                if (binNames != null) 
+                if (binNames != null) {
                     client.scanNode(scanPolicy, node, namespace, setName, cb, binNames);
-                else
+                } else {
                     client.scanNode(scanPolicy, node, namespace, setName, cb);
+                }
                 isFinished = true;
                 log.info("scan finished");
             } catch (Exception ex) {
@@ -155,8 +156,9 @@ public class AerospikeRecordReader
                 stmt.setNamespace(namespace);
                 stmt.setSetName(setName);
                 stmt.setFilters(Filter.range(numrangeBin, numrangeBegin, numrangeEnd));
-                if (binNames != null)
+                if (binNames != null) {
                     stmt.setBinNames(binNames);
+                }
                 QueryPolicy queryPolicy = new QueryPolicy();
                 RecordSet rs = client.queryNode(queryPolicy, stmt, client.getNode(node));
                 isRunning = true;
@@ -227,7 +229,9 @@ public class AerospikeRecordReader
 
     public synchronized boolean next(AerospikeKey key, AerospikeRecord value) throws IOException {
         try {
-            if (isError) return false;
+            if (isError) {
+                return false;
+            }
 
             while (!isRunning) {
                 Thread.sleep(100);
