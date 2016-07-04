@@ -42,6 +42,7 @@ public class AerospikeConfigUtil {
     public static final String INPUT_NUMRANGE_BEGIN = "aerospike.input.numrange.begin";
     public static final String INPUT_NUMRANGE_END = "aerospike.input.numrange.end";
     public static final long INVALID_LONG = 762492121482318889L;
+    public static final String INPUT_POLICY_USER_KEY_ENABLE = "aerospike.input.policy.user_key.enable";
 
     // ---------------- OUTPUT ----------------
 
@@ -173,6 +174,10 @@ public class AerospikeConfigUtil {
                 ("missing input numrange end");
         log.info("using " + INPUT_NUMRANGE_END + " = " + end);
         return end;
+    }
+
+    public static boolean getInputUserKeyEnable(Configuration conf) {
+        return conf.getBoolean(INPUT_POLICY_USER_KEY_ENABLE, false);
     }
 
     // ---------------- OUTPUT ----------------

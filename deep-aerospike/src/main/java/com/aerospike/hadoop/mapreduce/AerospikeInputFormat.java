@@ -145,7 +145,7 @@ public class AerospikeInputFormat
                         JobConf job,
                         Reporter reporter
                         ) throws IOException {
-        return new AerospikeRecordReader((AerospikeSplit) split);
+        return new AerospikeRecordReader((AerospikeSplit) split, job);
     }
 
 }
