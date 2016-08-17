@@ -35,7 +35,7 @@
         <spark.version>1.3.1</spark.version>
 
         <!-- Java  -->
-        <java.version>1.7</java.version>
+        <java.version>1.8</java.version>
 
         <!-- Hadoop  -->
         <hadoop.version>2.6.0</hadoop.version>
@@ -46,7 +46,7 @@
         <!-- mongodb driver -->
         <mongo.driver.version>2.12.4</mongo.driver.version>
 
-        <scala.version>2.10.4</scala.version>
+        <scala.version>2.11.6</scala.version>
 
         <slf4j.version>1.7.7</slf4j.version>
 
